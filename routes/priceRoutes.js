@@ -16,6 +16,8 @@ router.get('/current/:category', async (req, res) => {
         }
         res.json(latestList);
     } catch (error) {
+        // Log error for debugging purposes (optional but helpful)
+        console.error("Error fetching current list:", error); 
         res.status(500).json({ message: 'Error fetching current list.' });
     }
 });
@@ -31,6 +33,7 @@ router.get('/archive/:category', async (req, res) => {
         const archiveDates = dates.map(doc => doc.effectiveDate);
         res.json(archiveDates);
     } catch (error) {
+        console.error("Error fetching archive dates:", error); 
         res.status(500).json({ message: 'Error fetching archive dates.' });
     }
 });
@@ -38,9 +41,23 @@ router.get('/archive/:category', async (req, res) => {
 // 3. GET: Get a specific historical price list by date and category
 router.get('/historical/:category/:date', async (req, res) => {
     try {
-        const targetDate = new Date(req.params.date);
+        // -------------------------
+        // ✨ THE FIX IS HERE (Step 1) ✨
+        // -------------------------
+        // We MUST decode the URI component first. The frontend sends the full
+        // timestamp (23:59:59Z) encoded, which includes characters like ':' and '.'
+        const decodedDate = decodeURIComponent(req.params.date);
+        const targetDate = new Date(decodedDate);
         
-        // Find the price list that was effective ON or BEFORE the requested date
+        if (isNaN(targetDate.getTime())) {
+             // Handle case where decoding results in an invalid date
+             return res.status(400).json({ message: 'Invalid historical date format provided.' });
+        }
+        
+        // -------------------------
+        // (Step 2: Query remains correct)
+        // -------------------------
+        // Find the price list that was effective ON or BEFORE the requested time (23:59:59Z)
         const historicalList = await PriceList.findOne({
             category: req.params.category,
             effectiveDate: { $lte: targetDate } // Less than or equal to the requested date
@@ -50,10 +67,15 @@ router.get('/historical/:category/:date', async (req, res) => {
         .exec();
 
         if (!historicalList) {
-            return res.status(404).json({ message: 'No historical price list found for this date.' });
+            // This 404 error message should now be accurate
+            return res.status(404).json({ 
+                message: 'No historical price list found for this date.',
+                products: [] // Ensure an empty array is sent for robustness
+            });
         }
         res.json(historicalList);
     } catch (error) {
+        console.error("Error fetching historical list:", error); 
         res.status(500).json({ message: 'Error fetching historical list.' });
     }
 });
